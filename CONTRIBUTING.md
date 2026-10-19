@@ -105,12 +105,12 @@ make setup
 
 This installs a pre-commit hook that automatically checks:
 
-- **Formatting**: `cargo fmt --all -- --check`
-- **Lints**: `cargo clippy --all-targets --all-features -- -D warnings`
+- **Formatting**: `make fmt-check` (`cargo fmt --all -- --check`)
+- **Lints**: `make clippy` — the canonical lint gate, identical to CI (see [Building & Testing](#building--testing))
 
 Commits will be rejected if either check fails.
 
-Run `cargo fmt --all` to fix formatting issues.
+Run `make fmt` to fix formatting issues.
 
 ### Option A — Dev Container (recommended, zero manual setup)
 
@@ -292,7 +292,7 @@ All commands are run from the repository root. Use the `make` shortcuts or the r
 # Format (check only — no changes)
 make fmt-check
 
-# Lint — zero warnings allowed
+# Lint — the canonical lint gate (zero warnings allowed)
 make clippy
 
 # Standard (lib) build — cross-platform
@@ -301,28 +301,42 @@ make build
 # WASM build (the deployable artifact)
 make build-wasm
 
-# Run the full test suite — all must pass
+# Unit tests (lib target) — fast local loop
 make test
+
+# Every test target: unit tests + the integration suites in contracts/escrow/tests/
+make test-all
 
 # Or use raw cargo commands:
 cargo fmt --all
-cargo clippy --lib -- -D warnings
+cargo clippy --lib -- -D warnings -W clippy::pedantic   # = make clippy
 cargo build --lib --release
 cargo build --target wasm32v1-none --release
-cargo test --lib
+cargo test --lib                                         # = make test
+cargo test --tests --features trustlink-escrow/testutils # = make test-all
 
 # Run a single test or a module
 cargo test --lib test_full_escrow_flow
 cargo test --lib -- --nocapture   # show println! output
 
-# Run all CI checks in sequence
+# Other checks that CI runs
+make fuzz-check      # type-check the fuzz targets (separate workspace)
+make xtask-test      # fmt + clippy + test the developer CLI
+make indexer-test    # typecheck + test the event indexer (run npm ci first)
+
+# Run the core checks in sequence
 make check
 
 # Optional: optimized wasm via wasm-opt (requires binaryen)
 ./build.sh
 ```
 
-These checks — `fmt`, `clippy`, `test`, and `build-wasm` — are exactly what the CI pipeline runs, so running them locally before pushing means no CI surprises. All commands use `--lib` targets for cross-platform compatibility.
+### Which command is canonical?
+
+- **Linting:** `make clippy` — the pre-commit hook runs it, CI runs it, and it is the only clippy scope that gates this repository (`cargo clippy --lib -- -D warnings -W clippy::pedantic` with the documented Soroban allow-list in the Makefile). If you see any other clippy invocation in a script or doc, it is not a gate.
+- **Tests:** `make test` for the fast unit-only loop; `make test-all` runs every test target (unit + integration) and is what CI enforces before merge. The integration tests in `contracts/escrow/tests/` declare `required-features = ["testutils"]` in `contracts/escrow/Cargo.toml`, so bare `cargo test --tests` **skips** them with a note instead of failing — pass the feature (or use `make test-all`) to run them.
+
+These checks — `fmt`, `clippy`, `test`, `test-all`, `fuzz-check`, `xtask-test`, `indexer-test`, and `build-wasm` — are exactly what the CI pipeline runs, so running them locally before pushing means no CI surprises. The lib-target build/test commands work on any platform (Windows, Linux, macOS).
 
 ---
 
@@ -368,10 +382,10 @@ git commit -m "docs(storage): clarify TTL behaviour for instance storage keys"
 Run the same checks CI runs:
 
 ```bash
-cargo fmt --all --check
-cargo clippy --lib -- -D warnings
-cargo build --target wasm32v1-none --release
-cargo test --lib
+make fmt-check
+make clippy
+make build-wasm
+make test-all
 
 # Sanity-check the WASM binary size hasn't ballooned unexpectedly
 ls -lh target/wasm32v1-none/release/trustlink_escrow.wasm
@@ -433,8 +447,15 @@ Closes #
 
 Tests use the `soroban_sdk::testutils` environment. There are two places tests live:
 
-- **Unit / focused tests** — files named `test_*.rs` in `contracts/escrow/src/`, each registered with `mod test_*;` in `lib.rs`. Most tests live here, grouped by feature (fees, disputes, auth, TTL, …).
-- **Integration tests** — files in `contracts/escrow/tests/` (`happy_path.rs`, `edge_cases.rs`, `auth_audit.rs`) that exercise full end-to-end flows.
+- **Unit / focused tests** — files named `test_*.rs` in `contracts/escrow/src/`, each registered with `mod test_*;` in `lib.rs`. Most tests live here, grouped by feature (fees, disputes, auth, TTL, …). Run with `make test` (or `cargo test --lib`).
+- **Integration tests** — files in `contracts/escrow/tests/` (`happy_path.rs`, `edge_cases.rs`, `auth_audit.rs`, `cancel_events.rs`, `missing_features_integration.rs`) that exercise full end-to-end flows. Run with `make test-all` (or `cargo test --tests --features trustlink-escrow/testutils`).
+
+> **Why the feature flag?** The integration tests call admin entry points that the
+> contract compiles only under `#[cfg(any(test, feature = "testutils"))]`. Each
+> file therefore declares `required-features = ["testutils"]` in
+> `contracts/escrow/Cargo.toml`, so a bare `cargo test --tests` skips them with a
+> note instead of failing to compile. `make test-all` passes the feature and runs
+> everything — that is the command CI enforces.
 
 ### Test Structure
 
@@ -496,7 +517,8 @@ code produces no `git diff`). To update snapshots after changing contract
 behaviour, events, or storage keys:
 
 ```bash
-cargo test --lib -p trustlink-escrow
+make test      # regenerates unit-test snapshots
+make test-all  # also regenerates the integration-test snapshots
 git status                       # review the snapshot diffs
 git diff contracts/escrow/test_snapshots/   # confirm only intended changes
 git add contracts/escrow/test_snapshots/

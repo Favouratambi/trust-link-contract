@@ -279,8 +279,11 @@ The escrow lifecycle is a finite state machine. The escrow states are defined in
 # Build for Soroban
 cargo build --target wasm32v1-none -p trustlink-escrow
 
-# Run all 16 tests
-cargo test -p trustlink-escrow
+# Run the unit tests (fast local loop)
+make test
+
+# Run every test target — unit tests + integration suites (what CI enforces)
+make test-all
 ```
 
 Unit tests run against the mock `Env`. For end-to-end coverage against a real
@@ -1020,9 +1023,9 @@ Contribution guidelines are in `CONTRIBUTING.md`.
 
 Recommended workflow:
 
-- format with `cargo fmt`,
-- lint with `cargo clippy -- -D warnings`,
-- run tests with `cargo test`,
+- format with `make fmt` (check with `make fmt-check`),
+- lint with `make clippy` (the canonical gate — identical to the pre-commit hook and CI),
+- run tests with `make test-all` (unit + integration suites),
 - ensure CI passes before opening a PR.
 
 The repository participates in the **Stellar Wave Program**, and the docs describe issue labels and contribution points.

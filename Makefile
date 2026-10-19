@@ -1,4 +1,4 @@
-.PHONY: help build build-wasm test fmt clippy bench clean check check-error-codes doc audit indexer-test xtask-test \
+.PHONY: help build build-wasm test test-all fmt clippy bench clean check check-error-codes doc audit indexer-test xtask-test \
 	testnet testnet-reset testnet-stop fuzz-build fuzz fuzz-check setup hooks-uninstall
 
 help: ## Show this help
@@ -13,10 +13,13 @@ build-debug: ## Build all contracts in debug mode
 build-wasm: ## Build contract wasm for deployment
 	cargo build --target wasm32v1-none --release
 
-test: ## Run all tests (lib target, cross-platform)
+test: ## Run unit tests only (lib target, cross-platform)
 	cargo test --lib
 
-test-verbose: ## Run all tests with output
+test-all: ## Run every test target: unit tests plus contracts/escrow/tests/ integration suites
+	cargo test --tests --features trustlink-escrow/testutils
+
+test-verbose: ## Run unit tests with output
 	cargo test --lib -- --nocapture
 
 fmt: ## Format all code
@@ -36,7 +39,10 @@ CLIPPY_PEDANTIC_ALLOW := \
 	-A clippy::must_use_candidate \
 	-A clippy::wildcard_imports
 
-clippy: ## Run clippy lints, including clippy::pedantic
+# Canonical lint scope (issue #1102): this is the ONLY clippy command that
+# gates this repository. Both .githooks/pre-commit and .github/workflows/ci.yml
+# run it via `make clippy`, so a commit that passes locally passes in CI.
+clippy: ## Run clippy lints, including clippy::pedantic (canonical scope, used by hook and CI)
 	cargo clippy --lib -- -D warnings -W clippy::pedantic $(CLIPPY_PEDANTIC_ALLOW)
 
 check: fmt-check clippy test check-error-codes ## Run all checks (fmt + clippy + test + error-code drift)
@@ -125,7 +131,7 @@ hooks-install: ## Install pre-commit git hooks
 	@chmod +x .githooks/pre-commit
 	@git config core.hooksPath .githooks
 	@echo "Git hooks installed successfully."
-	@echo "Pre-commit hook will run cargo fmt and cargo clippy on each commit."
+	@echo "Pre-commit hook will run 'make fmt-check' and 'make clippy' on each commit."
 
 hooks-uninstall: ## Uninstall git hooks
 	@git config --unset core.hooksPath
