@@ -11,6 +11,13 @@ jobs:
       - name: Format Check
         run: make fmt-check
       # Canonical lint scope — identical to the pre-commit hook (issue #1102).
+      - name: Audit Scope Drift Check
+        run: |
+          # AUDIT_SCOPE.md is canonical; guard against audit/ duplicate
+          if [ -d "audit" ] && [ -f "audit/SCOPE.md" ]; then
+            echo "Error: Duplicate audit scope file detected at audit/SCOPE.md. AUDIT_SCOPE.md is canonical."
+            exit 1
+          fi
       - name: Clippy
         run: make clippy
       - name: Build (lib)
